@@ -38,7 +38,9 @@
   "license": "MIT",
   "dependencies": {
     "apostrophe": "file:./apostrophe",
-    "normalize.css": "^8.0.1"
+    "date-fns": "^2.28.0",
+    "normalize.css": "^8.0.1",
+    "uuid": "^8.3.2"
   },
   "devDependencies": {
     "eslint": "^7.16.0",

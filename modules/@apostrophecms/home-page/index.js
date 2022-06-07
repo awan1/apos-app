@@ -18,7 +18,9 @@ module.exports = {
                 'link',
                 '|',
                 'bulletList',
-                'orderedList'
+                'orderedList',
+                '|',
+                'comment'
               ],
               styles: [
                 {

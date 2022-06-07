@@ -1,37 +1,50 @@
 <template>
-  <div>
-    <bubble-menu
-      class="bubble-menu"
-      :tippy-options="{ duration: 100 }"
-      :editor="editor"
-      v-if="editor"
-    >
-      <AposContextMenuDialog
-        menu-placement="top"
-        class-list="apos-rich-text-toolbar"
-        :has-tip="false"
-        :modifiers="['unpadded']"
+  <div class="apos-rich-text-editor__container">
+    <section>
+      <bubble-menu
+        class="bubble-menu"
+        :tippy-options="{ duration: 100 }"
+        :editor="editor"
+        v-if="editor"
       >
-        <div class="apos-rich-text-toolbar__inner">
-          <component
-            v-for="(item, index) in toolbar"
-            :key="item + '-' + index"
-            :is="(tools[item] && tools[item].component) || 'AposTiptapUndefined'"
-            :name="item"
-            :tool="tools[item]"
-            :options="editorOptions"
-            :editor="editor"
-          />
-        </div>
-      </AposContextMenuDialog>
-    </bubble-menu>
-    <div class="apos-rich-text-editor__editor" :class="editorModifiers">
-      <editor-content :editor="editor" :class="editorOptions.className" />
-    </div>
-    <div class="apos-rich-text-editor__editor_after" :class="editorModifiers">
-      {{ $t('apostrophe:emptyRichTextWidget') }}
-    </div>
+        <AposContextMenuDialog
+          menu-placement="top"
+          class-list="apos-rich-text-toolbar"
+          :has-tip="false"
+          :modifiers="['unpadded']"
+        >
+          <div class="apos-rich-text-toolbar__inner">
+            <component
+              v-for="(item, index) in toolbar"
+              :key="item + '-' + index"
+              :is="(tools[item] && tools[item].component) || 'AposTiptapUndefined'"
+              :name="item"
+              :tool="tools[item]"
+              :options="editorOptions"
+              :editor="editor"
+              @saveComment="saveComment"
+            />
+          </div>
+          <!-- <button v-bind:onclick="test()">hoho</button> -->
+        </AposContextMenuDialog>
+      </bubble-menu>
+      <div class="apos-rich-text-editor__editor" :class="editorModifiers">
+        <editor-content :editor="editor" :class="editorOptions.className" />
+      </div>
+      <div class="apos-rich-text-editor__editor_after" :class="editorModifiers">
+        {{ $t('apostrophe:emptyRichTextWidget') }}
+      </div>
+    </section>
+    <section class="apos-outer-comment">
+      <AposOuterComment
+        :active-comments-instance="activeCommentsInstance"
+        :all-comments="allComments"
+        :focus-content="focusContent"
+        @saveComment="saveComment"
+      />
+    </section>
   </div>
+
 </template>
 
 <script>
@@ -45,12 +58,15 @@ import TextAlign from '@tiptap/extension-text-align';
 import Highlight from '@tiptap/extension-highlight';
 import TextStyle from '@tiptap/extension-text-style';
 import Underline from '@tiptap/extension-underline';
+import { v4 as uuidv4 } from 'uuid';
+import AposOuterComment from '../../../../../apos-build/default/apos/modules/verily-ui-customization/components/AposOuterComment.vue';
 export default {
   name: 'AposRichTextWidgetEditor',
   components: {
     EditorContent,
-    BubbleMenu
-  },
+    BubbleMenu,
+    AposOuterComment
+},
   props: {
     type: {
       type: String,
@@ -88,11 +104,25 @@ export default {
         },
         hasErrors: false
       },
-      pending: null
+      pending: null,
+      activeCommentsInstance: {},
+      allComments: [],
+      showCommentMenu: false,
+      isTextSelected: false
     };
   },
   computed: {
     moduleOptions() {
+      console.log('this');
+      console.log(this);
+      console.log('apos');
+      console.log(apos);
+      console.log('apos.modules');
+      console.log(apos.modules);
+      console.log('apos.area.widgetManagers');
+      console.log(apos.area.widgetManagers);
+      console.log('this.type');
+      console.log(this.type);
       return apos.modules[apos.area.widgetManagers[this.type]];
     },
     defaultOptions() {
@@ -100,6 +130,8 @@ export default {
     },
     editorOptions() {
       const activeOptions = Object.assign({}, this.options);
+      console.log('this.options');
+      console.log(this.options);
 
       // Allow toolbar option to pass through if `false`
       activeOptions.toolbar = (activeOptions.toolbar !== undefined)
@@ -114,6 +146,8 @@ export default {
       activeOptions.className = (activeOptions.className !== undefined)
         ? activeOptions.className : this.moduleOptions.className;
 
+      console.log('activeOptions');
+      console.log(activeOptions);
       return activeOptions;
     },
     autofocus() {
@@ -121,7 +155,11 @@ export default {
       return !this.stripPlaceholderBrs(this.value.content).length;
     },
     initialContent() {
+      console.log('initialContent');
+      console.log(this.value);
+
       const content = this.stripPlaceholderBrs(this.value.content);
+      console.log(content);
       if (!content.length) {
         // If we don't supply a valid instance of the first style, then
         // the text align control will not work until the user manually
@@ -180,6 +218,8 @@ export default {
       content: this.initialContent,
       autofocus: this.autofocus,
       onUpdate: this.editorUpdate,
+      onSelectionUpdate: this.onSelectionUpdate,
+      onCreate: this.onCreate,
       extensions: [
         StarterKit,
         TextAlign.configure({
@@ -191,12 +231,146 @@ export default {
       ].concat(this.aposTiptapExtensions)
     });
   },
-
   beforeDestroy() {
     this.editor.destroy();
   },
   methods: {
+    async saveComment(comment) {
+      console.log('saveComment!');
+      
+      const localVal = comment;
+      if (!localVal.trim().length) {
+        return;
+      }
+
+      const activeCommentInstance = JSON.parse(JSON.stringify(this.activeCommentsInstance));
+      const commentsArray = typeof activeCommentInstance.comments === 'string' ? JSON.parse(activeCommentInstance.comments) : activeCommentInstance.comments;
+      // console.log('activeCommentInstance');
+      // console.log(activeCommentInstance);
+      // console.log('commentsArray');
+      // console.log(commentsArray);
+
+      if (commentsArray) {
+        commentsArray.push({
+          username: apos.login.user.username,
+          time: Date.now(),
+          content: localVal
+        });
+
+        const commentWithUuid = JSON.stringify({
+          uuid: this.activeCommentsInstance.uuid || uuidv4(),
+          comments: commentsArray
+        });
+
+        this.editor.chain().setComment(commentWithUuid).run();
+      } else {
+        const commentWithUuid = JSON.stringify({
+          uuid: uuidv4(),
+          comments: [{
+            username: apos.login.user.username,
+            time: Date.now(),
+            content: localVal
+          }]
+        });
+
+        this.editor.chain().setComment(commentWithUuid).run();
+      }
+
+      // const selection = this.editor.state.selection;
+      // console.log(selection.$from);
+      // console.log(selection.$to);
+      
+      // await apos.http.post('/api/v1/comment', {
+      //     body: {
+      //         title: 'test title',
+      //         startIndex: input.anchorOffset,
+      //         endIndex: input.focusOffset,
+      //         // TODO: figure out why the logic for this above isn't working
+      //         startRow: 0,
+      //         comment: input.comment,
+      //         commenterUsername: apos.login.user.username,
+      //         richTextWidgetId: this.docId
+      //     }
+      // });
+
+      // this.editor.commands.setHighlight();
+    },
+    focusContent(from, to) {
+      this.editor.chain().setTextSelection({ from: from, to: to }).run();
+    },
+    findCommentsAndStoreValues() {
+      const tempComments = [];
+
+      console.log('this.editor.state.doc');
+      console.log(this.editor.state.doc);
+      this.editor.state.doc.descendants((node, pos) => {
+        const { marks } = node;
+
+        marks.forEach((mark) => {
+          if (mark.type.name === 'comment') {
+            const markComments = mark.attrs.comment;
+            const jsonComments = markComments ? JSON.parse(markComments) : null;
+
+            if (jsonComments !== null) {
+              tempComments.push({
+                node,
+                jsonComments,
+                from: pos,
+                to: pos + (node.text?.length || 0),
+                text: node.text
+              });
+            }
+          }
+        })
+      })
+
+      this.allComments = tempComments;
+    },
+    setCurrentComment() {
+      console.log('setCurrentComment');
+      console.log('editor.getHTML');
+      console.log(this.editor.getHTML());
+      console.log('editor.getJSON');
+      console.log(this.editor.getJSON());
+      // console.log('editor.getText');
+      // console.log(this.editor.getText());
+      // console.log('editor.getAttributes');
+      // console.log(this.editor.getAttributes('comment'));
+
+      console.log('content with restored placeholder brs')
+      const test = this.restorePlaceholderBrs(this.editor.getHTML());
+      console.log(test)
+
+      const widget = this.docFields.data;
+      console.log('widget');
+      console.log(widget);
+
+
+      const newVal = this.editor.isActive('comment');
+
+      if (newVal) {
+        // setTimeout(() => (this.showCommentMenu = newVal), 50);
+        const parsedComment = JSON.parse(this.editor.getAttributes('comment').comment);
+        parsedComment.comment = typeof parsedComment.comments === 'string' ? JSON.parse(parsedComment.comments) : parsedComment.comments;
+        this.activeCommentsInstance = parsedComment;
+      } else {
+        this.activeCommentsInstance = {};
+      }
+    },
+    onCreate() {
+      console.log('on create');
+      this.findCommentsAndStoreValues();
+    },
+    onSelectionUpdate() {
+      console.log('on selection update');
+      this.setCurrentComment();
+      this.isTextSelected = !!this.editor.state.selection.content().size;
+    },
     async editorUpdate() {
+      console.log('on update');
+      this.findCommentsAndStoreValues();
+      this.setCurrentComment();
+
       // Hint that we are typing, even though we're going to
       // debounce the actual updates for performance
       if (this.docId === window.apos.adminBar.contextId) {
@@ -307,6 +481,10 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+  .apos-rich-text-editor__container {
+    display: flex;
+    justify-content: center;
+  }
 
   .apos-rich-text-toolbar.editor-menu-bubble {
     z-index: $z-index-manager-toolbar;
@@ -375,6 +553,19 @@ export default {
     /* Addresses a Safari-only situation where it inherits the
       `::-webkit-scrollbar-button` 2px margin. */
     margin: 0;
+  }
+
+  .apos-rich-text-editor__editor ::v-deep span[data-comment] {
+    background: rgba(172, 255, 47, 0.5);
+    &::after {
+      // content: " 💬";
+      user-select: all;
+    }
+  }
+
+  .apos-outer-comment {
+    width: 300px;
+    // margin-left: 100px;
   }
 
 </style>

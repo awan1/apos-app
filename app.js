@@ -26,6 +26,7 @@ require('apostrophe')({
         className: 'bp-video-widget'
       }
     },
+    comment: {},
     // `asset` supports the project's webpack build for client-side assets.
     asset: {},
     // The project's custom page types
