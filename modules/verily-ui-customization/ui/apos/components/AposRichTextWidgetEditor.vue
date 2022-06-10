@@ -273,6 +273,8 @@ export default {
           }]
         });
 
+        console.log('saveComment: commentWithUuid:');
+        console.log(commentWithUuid);
         this.editor.chain().setComment(commentWithUuid).run();
       }
 
@@ -298,6 +300,8 @@ export default {
     focusContent(from, to) {
       this.editor.chain().setTextSelection({ from: from, to: to }).run();
     },
+    // retrieves comments from `editor.state.doc` and stores them into `this.allComments`,
+    // which is fed into `AposOuterComment` which then displays the comments.
     findCommentsAndStoreValues() {
       const tempComments = [];
 
@@ -309,15 +313,19 @@ export default {
         marks.forEach((mark) => {
           if (mark.type.name === 'comment') {
             const markComments = mark.attrs.comment;
-            const jsonComments = markComments ? JSON.parse(markComments) : null;
+            const jsonComments = markComments ? JSON.parse(markComments) : null
+
+            console.log('Storing jsonComments')
+            console.log(jsonComments)
 
             if (jsonComments !== null) {
               tempComments.push({
-                node,
+                // node,  // Saving node here causes klona to error out with an exceeded max stack depth 
                 jsonComments,
                 from: pos,
                 to: pos + (node.text?.length || 0),
-                text: node.text
+                text: node.text,
+                // editorComment: ????
               });
             }
           }
@@ -345,20 +353,35 @@ export default {
       console.log('widget');
       console.log(widget);
 
-
       const newVal = this.editor.isActive('comment');
 
       if (newVal) {
         // setTimeout(() => (this.showCommentMenu = newVal), 50);
+        console.log('parsedComment in setCurrentComment')
         const parsedComment = JSON.parse(this.editor.getAttributes('comment').comment);
+        console.log(parsedComment);
         parsedComment.comment = typeof parsedComment.comments === 'string' ? JSON.parse(parsedComment.comments) : parsedComment.comments;
         this.activeCommentsInstance = parsedComment;
       } else {
         this.activeCommentsInstance = {};
       }
     },
+    addCommentsAsMarks() {
+      console.log('addCommentsAsMarks')
+      for (const comment of this.value.comments) {
+        console.log('comment:')
+        console.log(comment)
+        this.editor.chain()
+          .setTextSelection({ from: comment.from, to: comment.to })
+          .setComment(JSON.stringify(comment.jsonComment))
+          .run()
+      }
+    },
     onCreate() {
       console.log('on create');
+      // Add the comments from the loaded doc as marks
+      // this.addCommentsAsMarks()
+      // This method will then find those marks and add them as comments
       this.findCommentsAndStoreValues();
     },
     onSelectionUpdate() {
@@ -368,8 +391,11 @@ export default {
     },
     async editorUpdate() {
       console.log('on update');
+      // Call in update to store changes in the comments' anchors, for example
       this.findCommentsAndStoreValues();
       this.setCurrentComment();
+
+      // persist comments somehow
 
       // Hint that we are typing, even though we're going to
       // debounce the actual updates for performance
@@ -397,6 +423,7 @@ export default {
       content = this.restorePlaceholderBrs(content);
       const widget = this.docFields.data;
       widget.content = content;
+      widget.comments = this.allComments;
       // ... removes need for deep watching in parent
       this.$emit('update', { ...widget });
     },

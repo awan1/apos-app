@@ -137,9 +137,81 @@ When to save comments to db
 - Approach 1: When the page is "published"
     - 
 - Approach 2: Whenever the page is autosaved, and when the page is published
-    - 
+    - Preferable. Probably doesn't take much more work than Approach 1.
+    - `onUpdate` --> `editorUpdate`: After
+
+How to save comments in db
+- Approach 1: save the comments in the `doc` object.
+  - Then in editor `onCreate`, we can call `findCommentsAndStoreValues`, as currently written, since the comments will be in the `doc` object.
+  - This is appealing, but it seems like we might not save the `editor.state.doc` to the db. It looks like Apos stores the content and then uses that to initialize the editor.
+- Approach 2: save the comments separately from the doc.
+  - Then in editor `onCreate`, we have to load up the comments and then apply them to the current doc.
+  - Storing the comments in its own "table" and then using an ID to link a comment to the object it's associated with seems to be the relational DB way of doing things; when previewing the page object in the mongoDB, it felt more natural to store each comment directly with the object that it's assoicated with, leading to Approach 3 below.
+- Approach 3: save the comments in the page object, e.g. associated with the widget.
+  - Will need to see how to load these comments up. Depends on what the editor receives when it's initialized.
+  - Maybe most idiomatic in NoRel DBs? Also simpler for prototyping (since the drawback is it's harder to support functionality that looks at all comments in the system, but we're not worrying about that for prototyping so it's a non-factor).
 
 
+Goal: be able to save comments and then load them back up.
+- Need to look into what the editor is initialized with. We will want to save the comments in a way such that the editor has access to them when it is created.
+- 
+
+How does the `AposRichTextWidgetEditor` get its content?
+- `AposRichTextWidgetEditor`: Content is in `this.value`, which is a prop.
+- `AposAreaWidget`: `AposRichTextWidgetEditor` is held by `AposAreaWidget`, which passes `value = widget`. `widget` is a prop.
+- `AposAreaEditor`: `AposAreaWidget` is held by `AposAreaEditor`, which passes `widget` using the values of the array called `next`. `next` is derived from `this.getValidItems()`, which uses `this.items`, which is a prop
+- Nothing is explicitly holding an `AposAreaEditor`...
+- Looking at all occurrences of `:items=`, it appears that `AposInputArea` is what holds the `AposAreaEditor`. It holds a `Component` that says it "is an EditorComponent", and `@apostrophecms/area/index.js` does contain the string `'AposAreaEditor'`. So maybe this file allows the `AposInputArea` to instantiate an `AposAreaEditor`.
+  - Gripe: using the `:is` makes it harder to see what the components being used are / trace the code. In general, it's difficult to trace the origin of certain data with the lack of code analysis tools (e.g. can't cmd+click into anything).
+  - Using the Vue devtools chrome extension, we can see the chain of objects from `AposAreaEditor` down to `AposRichTextWidgetEditor`.
+- `AposInputArea`: passes `next.items`. `next` comes from `this.value.data`. `this.value` seems to come from `AposInputMixin`, which says that `value` is a prop from the parent component.
+- ... having trouble finding the top of the tree. Through looking at the devtools console, the visible part of the page corresponds to `outerLayoutBase.html`, which maybe could be used to figure out what makes that html be shown?
+- 
+
+
+- During work, changes to files in the core library stopped being picked up after `npm i`. Removing `node_modules` didn't help. Quite frustrating.
+- Since we weren't able to find the top of the tree, we decided to see if we could just change the `items` object that was eventually being loaded. The thought process here is, if we can persist the comments to that object, we will likely have access to those fields when the editor is initialized
+
+- Hardcoded a change to the object in `TheAposContextBar.save`. Saw in the browser console that the field was being added (though strangely it was present in logs both before and after the field was added...)
+- Saw that it wasn't being persisted by removing that line and rerunning. Also confirmed that it was not being added to the DB.
+
+Next steps:
+- Continue trying to get the comment to persist in the DB, attached to the item.
+
+20220609
+- The `input` variable fed into the `applyPatch` call within `patch` in `page/index.js` looks like the following:
+{
+  '@cl3eyj2h4000i3f62xyu48exz': {
+    _id: 'cl3eyj2h4000i3f62xyu48exz',
+    metaType: 'widget',
+    type: '@apostrophecms/rich-text',
+    content: '<h3>Testing</h3><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commoda</p>',
+    _edit: true,
+    _docId: 'cl3dp092h0004r6db4chvcu72:en:draft',
+    comments: 'no way jose'
+  },
+  slug: '/',
+  parkedId: 'home'
+}
+- After `applyPatch` is called from `patch` above, `page.main.items[0]` looks like the following:
+{
+  _id: 'cl3eyj2h4000i3f62xyu48exz',
+  metaType: 'widget',
+  type: '@apostrophecms/rich-text',
+  content: '<h3>Testing</h3><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commoda</p>'
+}
+- After `applyPatch`, the `page` object is supposed to have the updated values from `input`. It seems that `sanitizeItems` in `area/index.js`, which is called by `convert` for the `area` field type in `addFieldTypes.js`, is stripping out the `comments` field, similarly to how span tags were stripped out of the content html we were trying to persist on 06/07. 
+
+- The `comments` field wasn't being used when constructing the `output` object in the `sanitize` method in `rich-text-widget/index.js`.
+- So, the solution is simply to add a line `output.comments = input.comments` in the `sanitize` method.
+- Confirmed that doing the above successfully persists comments to the db!
+- Needed to remove the `node` from the `tempComment` because `klona` was giving stack depth errors when parsing patches that contained comments that contained the doc nodes.
+- After successfully persisting comments to DB, on page load, we used Vue DevTools to look at the `value` that `AposRichTextWidgetEditor` was being initialized with, and it contained the `comments` array!
+
+Displaying stored comments on page load
+- Idea: for each stored comment, use Tiptap's `editor.commands.setTextSelection` to highlight the text corresponding to the comment, and then use code from `saveComment`, specifically `this.editor.chain().setComment(comment).run()`. (This seems to set the comment at the currently highlighted text.)
+
+-----
 
 (maybe these aren't needed any more since the save path is triggered on content change, not just on clicking `Update`)
 - Clicking `Update` button calls `onPublish` in `TheAposContextBar.vue` 
