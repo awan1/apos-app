@@ -108,7 +108,9 @@ export default {
       activeCommentsInstance: {},
       allComments: [],
       showCommentMenu: false,
-      isTextSelected: false
+      isTextSelected: false,
+      skipOnSelectionUpdate: false,
+      skipEditorUpdate: false
     };
   },
   computed: {
@@ -235,7 +237,7 @@ export default {
     this.editor.destroy();
   },
   methods: {
-    async saveComment(comment) {
+    saveComment(comment) {
       console.log('saveComment!');
       
       const localVal = comment;
@@ -325,6 +327,7 @@ export default {
                 from: pos,
                 to: pos + (node.text?.length || 0),
                 text: node.text,
+                
                 // editorComment: ????
               });
             }
@@ -335,61 +338,79 @@ export default {
       this.allComments = tempComments;
     },
     setCurrentComment() {
-      console.log('setCurrentComment');
-      console.log('editor.getHTML');
-      console.log(this.editor.getHTML());
-      console.log('editor.getJSON');
-      console.log(this.editor.getJSON());
       // console.log('editor.getText');
       // console.log(this.editor.getText());
       // console.log('editor.getAttributes');
       // console.log(this.editor.getAttributes('comment'));
-
-      console.log('content with restored placeholder brs')
-      const test = this.restorePlaceholderBrs(this.editor.getHTML());
-      console.log(test)
 
       const widget = this.docFields.data;
       console.log('widget');
       console.log(widget);
 
       const newVal = this.editor.isActive('comment');
-
-      if (newVal) {
-        // setTimeout(() => (this.showCommentMenu = newVal), 50);
-        console.log('parsedComment in setCurrentComment')
-        const parsedComment = JSON.parse(this.editor.getAttributes('comment').comment);
-        console.log(parsedComment);
-        parsedComment.comment = typeof parsedComment.comments === 'string' ? JSON.parse(parsedComment.comments) : parsedComment.comments;
-        this.activeCommentsInstance = parsedComment;
-      } else {
+      if (!newVal) {
         this.activeCommentsInstance = {};
+        return;
       }
+
+      // setTimeout(() => (this.showCommentMenu = newVal), 50);
+      const parsedComment = JSON.parse(this.editor.getAttributes('comment').comment);
+      console.log(`this.editor.getAttributes('comment')`)
+      console.log(this.editor.getAttributes('comment'))
+
+      if (!parsedComment) {
+        return;
+      }
+      console.log('non-null parsedComment:')
+      console.log(parsedComment);
+      parsedComment.comment = typeof parsedComment.comments === 'string' ? JSON.parse(parsedComment.comments) : parsedComment.comments;
+      this.activeCommentsInstance = parsedComment;
     },
     addCommentsAsMarks() {
       console.log('addCommentsAsMarks')
-      for (const comment of this.value.comments) {
+      const comments = this.allComments
+      this.skipOnSelectionUpdate = true;
+      this.skipEditorUpdate = true;
+      for (const comment of comments) {
         console.log('comment:')
         console.log(comment)
+        console.log('addCommentsAsMarks: setTextSelection')
         this.editor.chain()
           .setTextSelection({ from: comment.from, to: comment.to })
+          .run()
+        console.log('addCommentsAsMarks: setComment')
+        this.editor.chain()
           .setComment(JSON.stringify(comment.jsonComment))
           .run()
+        console.log('this.allComments right after setComment');
+        console.log(this.allComments);
       }
+      this.skipOnSelectionUpdate = false;
+      this.skipEditorUpdate = false;
+      console.log('addCommentsAsMarks: done')
     },
     onCreate() {
-      console.log('on create');
-      // Add the comments from the loaded doc as marks
-      // this.addCommentsAsMarks()
-      // This method will then find those marks and add them as comments
-      this.findCommentsAndStoreValues();
+      // this.findCommentsAndStoreValues();
+      // If there are this.value.comments, add them into tempComments and then clear them out of this.value.comments
+      if (this.value.comments) {
+        this.allComments = this.value.comments
+        this.value.comments = null;
+      }
+      this.addCommentsAsMarks()
     },
     onSelectionUpdate() {
+      if (this.skipOnSelectionUpdate) {
+        return;
+      }
       console.log('on selection update');
       this.setCurrentComment();
       this.isTextSelected = !!this.editor.state.selection.content().size;
     },
     async editorUpdate() {
+      if (this.skipEditorUpdate) {
+        return;
+      }
+      
       console.log('on update');
       // Call in update to store changes in the comments' anchors, for example
       this.findCommentsAndStoreValues();

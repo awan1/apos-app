@@ -211,6 +211,11 @@ Next steps:
 Displaying stored comments on page load
 - Idea: for each stored comment, use Tiptap's `editor.commands.setTextSelection` to highlight the text corresponding to the comment, and then use code from `saveComment`, specifically `this.editor.chain().setComment(comment).run()`. (This seems to set the comment at the currently highlighted text.)
 
+EOD 20220609
+- We were able to persist comments to the DB, and get it to load when the page loaded
+- However, we were unable to use the retrieved comment to create a Mark in the editor. This causes the comment to disappear when edits are made to the editor.
+- We're stopping work here because we've technically met the requirements, and have identified the gaps that would need to be filled when we do this for real. Also it's a data point that we spent 3+ hours trying to get the stored comment to convert to a Mark with no luck. (we would probably want to ask the Apos/TipTap community for help at this point, since it seems to be a problem with creating the mark / using `editor.setComment`)
+
 -----
 
 (maybe these aren't needed any more since the save path is triggered on content change, not just on clicking `Update`)
